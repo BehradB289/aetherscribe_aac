@@ -1,0 +1,2243 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- برداشتن رفرر برای رفع قطعی خطای 403 سرویس‌های صوتی ابری در لوکال‌هاست -->
+    <meta name="referrer" content="no-referrer" />
+    <title>AetherScribe AAC • سامانه هوشمند تکلم فضایی ناشنوایان</title>
+
+    <!-- فونت‌های استاندارد وزیرمتن و فونت علمی Orbitron -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- نگاشت کتابخانه‌های سه‌بعدی Three.js و بینایی ماشین MediaPipe -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/+esm"
+        }
+      }
+    </script>
+
+    <style>
+      :root {
+        --cyan-core: #00f0ff;
+        --cyan-glow: rgba(0, 240, 255, 0.45);
+        --purple-core: #d946ef;
+        --purple-glow: rgba(217, 70, 239, 0.45);
+        --emerald-core: #10b981;
+        --emerald-glow: rgba(16, 185, 129, 0.4);
+        --amber-core: #f59e0b;
+        --rose-core: #f43f5e;
+        --bg-void: #030712;
+        --card-glass: rgba(10, 15, 29, 0.82);
+        --card-border: rgba(255, 255, 255, 0.12);
+        --font-main: "Vazirmatn", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        --font-tech: "Orbitron", monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+      }
+
+      body {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background-color: var(--bg-void);
+        color: #f8fafc;
+        font-family: var(--font-main);
+        direction: rtl;
+      }
+
+      #webgl-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        display: block;
+      }
+
+      #system-curtain {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: radial-gradient(circle at center, #0b1329 0%, #030712 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        transition: opacity 0.5s ease;
+      }
+
+      .curtain-spinner {
+        width: 68px;
+        height: 68px;
+        border: 3.5px solid rgba(0, 240, 255, 0.15);
+        border-top: 3.5px solid var(--cyan-core);
+        border-radius: 50%;
+        animation: spin-pulse 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        box-shadow: 0 0 35px var(--cyan-glow);
+      }
+
+      @keyframes spin-pulse {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      .glass-card {
+        background: var(--card-glass);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        box-shadow: 0 10px 35px rgba(0, 0, 0, 0.65);
+      }
+
+      #top-navbar {
+        position: absolute;
+        top: 14px;
+        left: 20px;
+        right: 20px;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 9px 18px;
+        gap: 14px;
+      }
+
+      .brand-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+
+      .brand-logo-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--cyan-core), #2563eb);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 18px var(--cyan-glow);
+      }
+
+      .brand-logo-icon svg {
+        width: 22px;
+        height: 22px;
+        fill: #030712;
+      }
+
+      .brand-text h1 {
+        font-size: 15px;
+        font-weight: 800;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .brand-text h1 span {
+        font-family: var(--font-tech);
+        font-size: 10px;
+        color: var(--cyan-core);
+        background: rgba(0, 240, 255, 0.14);
+        padding: 2px 7px;
+        border-radius: 5px;
+        border: 1px solid rgba(0, 240, 255, 0.35);
+      }
+
+      /* کپسول وضعیت ادغام‌شده مرکز */
+      #unified-status-capsule {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        background: rgba(2, 6, 23, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 5px 16px;
+        border-radius: 30px;
+        font-size: 11.5px;
+        font-weight: 700;
+      }
+
+      .hand-mini-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .telemetry-mini {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--font-tech);
+        font-size: 11px;
+        color: #94a3b8;
+      }
+
+      .meta-cluster {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .voice-engine-switch {
+        display: flex;
+        align-items: center;
+        background: rgba(2, 6, 23, 0.75);
+        border: 1px solid rgba(0, 240, 255, 0.35);
+        border-radius: 10px;
+        padding: 4px 8px;
+        gap: 5px;
+      }
+
+      .voice-engine-switch select {
+        background: transparent;
+        border: none;
+        color: #f8fafc;
+        font-family: var(--font-main);
+        font-size: 11.5px;
+        font-weight: 700;
+        outline: none;
+        cursor: pointer;
+      }
+
+      .voice-engine-switch select option {
+        background: #090e1a;
+        color: #fff;
+      }
+
+      .action-pill-btn {
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 10px;
+        font-size: 11.5px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease;
+        font-family: var(--font-main);
+        font-weight: 600;
+      }
+
+      .action-pill-btn:hover {
+        background: rgba(0, 240, 255, 0.22);
+        border-color: var(--cyan-core);
+        box-shadow: 0 0 14px var(--cyan-glow);
+      }
+
+      .btn-accent {
+        background: linear-gradient(135deg, #00f0ff, #10b981);
+        color: #030712;
+        border: none;
+        font-weight: 800;
+        box-shadow: 0 0 18px var(--cyan-glow);
+      }
+
+      .btn-accent:hover {
+        background: linear-gradient(135deg, #33f3ff, #34d399);
+      }
+
+      .pinch-meter-ring {
+        position: relative;
+        width: 18px;
+        height: 18px;
+      }
+
+      .pinch-meter-ring svg {
+        transform: rotate(-90deg);
+        width: 18px;
+        height: 18px;
+      }
+
+      .pinch-meter-ring circle {
+        fill: none;
+        stroke-width: 3.5;
+      }
+
+      .ring-bg { stroke: rgba(255, 255, 255, 0.15); }
+      .ring-right {
+        stroke: var(--cyan-core);
+        stroke-dasharray: 44;
+        stroke-dashoffset: 44;
+        transition: stroke-dashoffset 0.05s linear;
+      }
+      .ring-left {
+        stroke: var(--purple-core);
+        stroke-dasharray: 44;
+        stroke-dashoffset: 44;
+        transition: stroke-dashoffset 0.05s linear;
+      }
+
+      #side-aac-deck {
+        position: absolute;
+        top: 72px;
+        right: 20px;
+        width: 280px;
+        z-index: 20;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .section-headline {
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--cyan-core);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      #radar-pad-container {
+        position: relative;
+        width: 100%;
+        height: 145px;
+        border-radius: 12px;
+        background: radial-gradient(circle at center, #031525 0%, #010714 100%);
+        border: 1.5px solid rgba(0, 240, 255, 0.45);
+        box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.95), 0 0 20px rgba(0, 240, 255, 0.22);
+        overflow: hidden;
+      }
+
+      #radar-pad-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .radar-counter-badge {
+        position: absolute;
+        bottom: 6px;
+        right: 8px;
+        font-size: 10px;
+        font-family: var(--font-tech);
+        color: #00f0ff;
+        background: rgba(0, 0, 0, 0.85);
+        padding: 2px 7px;
+        border-radius: 5px;
+        border: 1px solid rgba(0, 240, 255, 0.35);
+        pointer-events: none;
+      }
+
+      .radar-hud-tag {
+        position: absolute;
+        top: 6px;
+        left: 8px;
+        font-size: 9px;
+        font-family: var(--font-tech);
+        color: var(--emerald-core);
+        background: rgba(2, 6, 23, 0.85);
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid rgba(16, 185, 129, 0.35);
+        letter-spacing: 0.5px;
+        pointer-events: none;
+      }
+
+      .quick-phrases-cluster {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .phrase-chip {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #e2e8f0;
+        font-size: 11px;
+        padding: 5px 9px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: var(--font-main);
+        font-weight: 600;
+      }
+
+      .phrase-chip:hover {
+        background: rgba(16, 185, 129, 0.25);
+        border-color: var(--emerald-core);
+        color: #ffffff;
+      }
+
+      .gesture-guide-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .gesture-icon-box {
+        font-size: 16px;
+        flex-shrink: 0;
+      }
+
+      .gesture-desc h4 {
+        font-size: 11px;
+        font-weight: 700;
+        color: #ffffff;
+      }
+
+      .gesture-desc p {
+        font-size: 9.5px;
+        color: #94a3b8;
+      }
+
+      #output-stage {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 40px);
+        max-width: 900px;
+        z-index: 20;
+        padding: 14px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .stage-top-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .system-label {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #94a3b8;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .confidence-badge {
+        font-size: 11px;
+        font-family: var(--font-tech);
+        color: var(--emerald-core);
+        background: rgba(16, 185, 129, 0.12);
+        padding: 2px 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+
+      .speech-hero-box {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(2, 6, 23, 0.88);
+        border: 1.5px solid rgba(0, 240, 255, 0.4);
+        border-radius: 12px;
+        padding: 12px 18px;
+        min-height: 56px;
+        box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.85);
+        transition: border-color 0.3s ease;
+      }
+
+      .speech-main-text {
+        font-size: 26px;
+        font-weight: 900;
+        color: #ffffff;
+        letter-spacing: -0.3px;
+        line-height: 1.3;
+      }
+
+      .speech-placeholder {
+        color: #475569;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .audio-waveform-deck {
+        display: flex;
+        align-items: center;
+        gap: 3.5px;
+        height: 28px;
+      }
+
+      .waveform-bar {
+        width: 3.5px;
+        height: 6px;
+        background: linear-gradient(180deg, var(--cyan-core), var(--emerald-core));
+        border-radius: 2px;
+        transition: height 0.08s ease;
+      }
+
+      #candidates-container {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        min-height: 28px;
+      }
+
+      .candidate-badge-tag {
+        font-size: 10px;
+        color: #64748b;
+        font-weight: 700;
+        margin-left: 4px;
+      }
+
+      .candidate-chip {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #cbd5e1;
+        font-size: 11.5px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+
+      .candidate-chip:hover {
+        background: rgba(0, 240, 255, 0.2);
+        border-color: var(--cyan-core);
+        color: #fff;
+      }
+
+      .stage-footer-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 2px;
+      }
+
+      .tools-left, .tools-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      #cam-preview-pip {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        width: 150px;
+        height: 105px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1.5px solid rgba(255, 255, 255, 0.15);
+        background: #020617;
+        z-index: 20;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.75);
+      }
+
+      #cam-preview-pip video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      video.mirrored {
+        transform: scaleX(-1);
+      }
+
+      #settings-drawer {
+        position: absolute;
+        top: 72px;
+        left: 20px;
+        width: 320px;
+        z-index: 30;
+        padding: 16px;
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .drawer-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .drawer-field label {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #94a3b8;
+      }
+
+      .drawer-input, .drawer-select, .drawer-slider {
+        background: #090e1a;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        color: #ffffff;
+        font-family: var(--font-main);
+        font-size: 11.5px;
+        padding: 6px 8px;
+        outline: none;
+      }
+
+      .drawer-input:focus {
+        border-color: var(--cyan-core);
+        box-shadow: 0 0 10px var(--cyan-glow);
+      }
+
+      #toast-message {
+        position: fixed;
+        top: 75px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-20px);
+        background: rgba(2, 6, 23, 0.95);
+        border: 1px solid var(--cyan-core);
+        color: #ffffff;
+        padding: 7px 18px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        box-shadow: 0 0 20px var(--cyan-glow);
+        z-index: 1000;
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.25s ease;
+      }
+
+      #toast-message.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      #audio-unlocked-banner {
+        position: fixed;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(16, 185, 129, 0.92);
+        color: #030712;
+        font-weight: 800;
+        font-size: 11px;
+        padding: 4px 14px;
+        border-radius: 20px;
+        z-index: 100;
+        display: none;
+        box-shadow: 0 0 15px var(--emerald-glow);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="system-curtain">
+      <div class="curtain-spinner"></div>
+      <div style="text-align: center">
+        <h2 style="font-size: 17px; color: #fff; font-weight: 800;">
+          AetherScribe AAC • سامانه تکلم فضایی
+        </h2>
+        <p style="font-size: 12px; color: #64748b; margin-top: 4px;">
+          راه‌اندازی حسگرهای حرکتی، رادار روان و موتورهای گفتار اصیل فارسی...
+        </p>
+      </div>
+    </div>
+
+    <canvas id="webgl-canvas"></canvas>
+    <div id="toast-message">اعلان سامانه</div>
+    <div id="audio-unlocked-banner">🔊 موتور صوتی فعال و آماده پخش شد</div>
+
+    <!-- نوار ناوبری بالا -->
+    <header id="top-navbar" class="glass-card">
+      <div class="brand-title">
+        <div class="brand-logo-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>AetherScribe <span>AAC</span></h1>
+        </div>
+      </div>
+
+      <!-- کپسول وضعیت ادغام‌شده مرکز -->
+      <div id="unified-status-capsule">
+        <div class="hand-mini-indicator" style="color: var(--cyan-core);">
+          <div class="pinch-meter-ring">
+            <svg viewBox="0 0 24 24">
+              <circle class="ring-bg" cx="12" cy="12" r="7"></circle>
+              <circle class="ring-right" id="right-pinch-ring" cx="12" cy="12" r="7"></circle>
+            </svg>
+          </div>
+          <span id="right-hand-label">راست: آماده</span>
+        </div>
+
+        <div style="width: 1px; height: 14px; background: rgba(255, 255, 255, 0.15);"></div>
+
+        <div class="hand-mini-indicator" style="color: var(--purple-core);">
+          <div class="pinch-meter-ring">
+            <svg viewBox="0 0 24 24">
+              <circle class="ring-bg" cx="12" cy="12" r="7"></circle>
+              <circle class="ring-left" id="left-pinch-ring" cx="12" cy="12" r="7"></circle>
+            </svg>
+          </div>
+          <span id="left-hand-label">چپ: آماده</span>
+        </div>
+
+        <div style="width: 1px; height: 14px; background: rgba(255, 255, 255, 0.15);"></div>
+
+        <div class="telemetry-mini">
+          <span id="fps-label">60 FPS</span>
+          <span>•</span>
+          <span id="stroke-count-label">۰ خط</span>
+        </div>
+      </div>
+
+      <div class="meta-cluster">
+        <div class="voice-engine-switch" title="انتخاب موتور گفتار هوشمند">
+          <span style="font-size: 12px">🎙️</span>
+          <select id="quick-tts-select">
+            <option value="auto" selected>صوت: خودکار (هوشمند فارسی)</option>
+            <option value="edge_native">صوت: نیتیو مایکروسافت اج (دل‌آرا / فرید)</option>
+            <option value="gemini_ai">صوت: هوش مصنوعی Gemini 2.5</option>
+            <option value="cloud_stream">صوت: استریم ابری فارسی</option>
+          </select>
+        </div>
+
+        <button id="audio-tester-btn" class="action-pill-btn" style="border-color: rgba(16, 185, 129, 0.55); color: #34d399;">
+          <span>🔊</span>
+          <span id="audio-tester-label">تست صدا</span>
+        </button>
+
+        <button id="toggle-settings-btn" class="action-pill-btn">
+          <span>⚙️</span>
+        </button>
+
+        <button id="fullscreen-btn" class="action-pill-btn">
+          <span>⛶</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ستون کناری AAC -->
+    <aside id="side-aac-deck" class="glass-card">
+      <div class="section-headline">
+        <span>پیش‌نمایش راداری دست‌خط</span>
+      </div>
+
+      <div id="radar-pad-container">
+        <canvas id="radar-pad-canvas"></canvas>
+        <div class="radar-hud-tag">HUD RADAR • ULTRA SMOOTH</div>
+        <div class="radar-counter-badge" id="radar-counter-text">۰ خط</div>
+      </div>
+
+      <div class="section-headline">
+        <span>واژگان سریع</span>
+      </div>
+      <div class="quick-phrases-cluster">
+        <button class="phrase-chip" data-phrase="سلام">سلام</button>
+        <button class="phrase-chip" data-phrase="بهراد">بهراد</button>
+        <button class="phrase-chip" data-phrase="متشکرم">متشکرم</button>
+        <button class="phrase-chip" data-phrase="کمک">کمک</button>
+        <button class="phrase-chip" data-phrase="بله">بله</button>
+        <button class="phrase-chip" data-phrase="خیر">خیر</button>
+      </div>
+
+      <div class="gesture-guide-item">
+        <div class="gesture-icon-box">✌️</div>
+        <div class="gesture-desc">
+          <h4>علامت صلح (✌️)</h4>
+          <p>خواندن کلمه با صدا</p>
+        </div>
+      </div>
+
+      <div class="gesture-guide-item" style="border-color: rgba(244, 63, 94, 0.35);">
+        <div class="gesture-icon-box">✊</div>
+        <div class="gesture-desc">
+          <h4>مشت کردن (✊)</h4>
+          <p>پاک‌کردن تخته</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- دراور تنظیمات پیشرفته -->
+    <section id="settings-drawer" class="glass-card">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h3 style="font-size: 13.5px; color: var(--cyan-core); font-weight: 800;">تنظیمات سیستم و صوت</h3>
+        <button id="close-drawer-btn" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">✕</button>
+      </div>
+
+      <!-- فیلد کلید API هوش مصنوعی جمینای برای تولید صدای استودیویی -->
+      <div class="drawer-field">
+        <label>کلید Gemini API (اختیاری جهت کیفیت استودیویی):</label>
+        <input type="password" id="gemini-key-input" class="drawer-input" placeholder="کلید هوش مصنوعی را اینجا الصاق کنید..." />
+        <span style="font-size: 10px; color: #64748b;">دریافت آنی و رایگان از aistudio.google.com</span>
+      </div>
+
+      <div class="drawer-field">
+        <label>دوربین ورودی:</label>
+        <select id="camera-selector" class="drawer-select"></select>
+      </div>
+
+      <div class="drawer-field">
+        <label>وضوح تصویر:</label>
+        <select id="resolution-selector" class="drawer-select">
+          <option value="1280x720" selected>HD 720p (استاندارد)</option>
+          <option value="1920x1080">Full HD 1080p</option>
+          <option value="640x480">480p</option>
+        </select>
+      </div>
+
+      <div class="drawer-field">
+        <label>لرزش‌گیر قلم: <span id="smooth-label" style="color: var(--cyan-core)">0.75</span></label>
+        <input type="range" id="smooth-range" class="drawer-slider" min="0.3" max="0.9" step="0.05" value="0.75" />
+      </div>
+
+      <div class="drawer-field" style="flex-direction: row; align-items: center; justify-content: space-between;">
+        <label>حالت آینه‌ای (Mirror):</label>
+        <input type="checkbox" id="mirror-checkbox" checked style="accent-color: var(--cyan-core); width: 18px; height: 18px;" />
+      </div>
+
+      <div class="drawer-field" style="flex-direction: row; align-items: center; justify-content: space-between;">
+        <label>قرائت خودکار پس از تبدیل:</label>
+        <input type="checkbox" id="autospeak-checkbox" checked style="accent-color: var(--emerald-core); width: 18px; height: 18px;" />
+      </div>
+    </section>
+
+    <!-- استیج خروجی متن و تکلم اصلی -->
+    <main id="output-stage" class="glass-card">
+      <div class="stage-top-meta">
+        <div class="system-label">
+          <span>● کنسول گفتار آنی</span>
+        </div>
+        <div class="confidence-badge" id="confidence-indicator">آماده نگارش</div>
+      </div>
+
+      <div class="speech-hero-box" id="speech-hero-container">
+        <div class="speech-main-text" id="target-speech-text">
+          <span class="speech-placeholder">کلمه را در هوا بنویسید (مثل «بهراد»)، سپس ژست ✌️ را نشان دهید...</span>
+        </div>
+
+        <div class="audio-waveform-deck" id="waveform-bars-deck">
+          <div class="waveform-bar"></div>
+          <div class="waveform-bar"></div>
+          <div class="waveform-bar"></div>
+          <div class="waveform-bar"></div>
+          <div class="waveform-bar"></div>
+          <div class="waveform-bar"></div>
+          <div class="waveform-bar"></div>
+          <div class="waveform-bar"></div>
+        </div>
+      </div>
+
+      <div id="candidates-container">
+        <span class="candidate-badge-tag">کاندیداها:</span>
+        <button class="candidate-chip" data-word="بهراد">بهراد</button>
+        <button class="candidate-chip" data-word="مهراد">مهراد</button>
+        <button class="candidate-chip" data-word="سلام">سلام</button>
+      </div>
+
+      <div class="stage-footer-actions">
+        <div class="tools-left">
+          <button id="trigger-recognize-btn" class="action-pill-btn btn-accent">
+            <span>✨ خواندن کلمه (✌️)</span>
+          </button>
+          <button id="replay-voice-btn" class="action-pill-btn">
+            <span>🔊 پخش مجدد</span>
+          </button>
+          <button id="copy-text-btn" class="action-pill-btn">
+            <span>📋 کپی</span>
+          </button>
+        </div>
+
+        <div class="tools-right">
+          <button id="clear-space-btn" class="action-pill-btn" style="color: #fda4af; border-color: rgba(244, 63, 94, 0.4);">
+            <span>🗑️ پاک‌کردن (✊)</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <div id="cam-preview-pip">
+      <video id="webcam-source" class="mirrored" autoplay playsinline muted></video>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
+
+      /* کلاس مدیریت ارشد صدا و بازگشایی قفل مرورگر */
+      class MasterAudioPipeline {
+        constructor() {
+          this.ctx = null;
+          this.isUnlocked = false;
+        }
+
+        getAudioContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+          }
+          if (this.ctx.state === "suspended") {
+            this.ctx.resume().catch(() => {});
+          }
+          return this.ctx;
+        }
+
+        async unlock() {
+          const ctx = this.getAudioContext();
+          if (ctx.state === "suspended") {
+            await ctx.resume().catch(() => {});
+          }
+          this.isUnlocked = true;
+          const banner = document.getElementById("audio-unlocked-banner");
+          if (banner) {
+            banner.style.display = "block";
+            setTimeout(() => (banner.style.display = "none"), 2500);
+          }
+          return ctx;
+        }
+
+        /* چایم خوش‌آهنگ تأیید اسپیکر */
+        async playChime() {
+          const ctx = await this.unlock();
+          const now = ctx.currentTime;
+          const notes = [440, 554.37, 659.25, 880];
+          notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+
+            gain.gain.setValueAtTime(0.35, now + idx * 0.07);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.42);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + idx * 0.07);
+            osc.stop(now + idx * 0.07 + 0.45);
+          });
+        }
+
+        async playEraserSwoosh() {
+          const ctx = await this.unlock();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(400, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.2);
+
+          gain.gain.setValueAtTime(0.3, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.2);
+        }
+
+        async playClick() {
+          const ctx = await this.unlock();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(900, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1100, ctx.currentTime + 0.035);
+          gain.gain.setValueAtTime(0.12, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.035);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.035);
+        }
+      }
+
+      const masterAudio = new MasterAudioPipeline();
+
+      /* توابع تبدیل PCM16 به WAV برای صدای استودیویی Gemini 2.5 Flash TTS */
+      function pcmToWav(pcm16, sampleRate) {
+        const numChannels = 1;
+        const bytesPerSample = 2;
+        const blockAlign = numChannels * bytesPerSample;
+        const byteRate = sampleRate * blockAlign;
+        const dataLength = pcm16.length * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + dataLength);
+        const view = new DataView(buffer);
+
+        const writeString = (offset, string) => {
+          for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+          }
+        };
+
+        writeString(0, "RIFF");
+        view.setUint32(4, 36 + dataLength, true);
+        writeString(8, "WAVE");
+        writeString(12, "fmt ");
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, 16, true);
+        writeString(36, "data");
+        view.setUint32(40, dataLength, true);
+
+        let offset = 44;
+        for (let i = 0; i < pcm16.length; i++, offset += 2) {
+          view.setInt16(offset, pcm16[i], true);
+        }
+
+        return new Blob([buffer], { type: "audio/wav" });
+      }
+
+      function base64ToArrayBuffer(base64) {
+        const binaryString = atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+      }
+
+      /* سیستم جامع صوتی اختصاصی فارسی با رفع ریشه‌ای باگ سکوت و لهجه غیرفارسی */
+      class UniversalSpeechAAC {
+        constructor() {
+          this.bars = document.querySelectorAll(".waveform-bar");
+          this.animFrame = null;
+          this.isSpeaking = false;
+          this.currentAudio = null;
+          this.voices = [];
+          this.geminiApiKey = "";
+
+          if ("speechSynthesis" in window) {
+            const loadVoices = () => {
+              this.voices = window.speechSynthesis.getVoices();
+            };
+            loadVoices();
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+          }
+        }
+
+        setGeminiKey(key) {
+          this.geminiApiKey = key.trim();
+        }
+
+        startVisualizer() {
+          if (this.animFrame) cancelAnimationFrame(this.animFrame);
+          const start = performance.now();
+          const tick = () => {
+            if (!this.isSpeaking) {
+              this.stopVisualizer();
+              return;
+            }
+            const elapsed = performance.now() - start;
+            this.bars.forEach((bar, i) => {
+              const h = Math.sin(elapsed * 0.035 + i * 0.8) * 16 + 18;
+              bar.style.height = `${Math.max(6, h)}px`;
+            });
+            this.animFrame = requestAnimationFrame(tick);
+          };
+          tick();
+        }
+
+        stopVisualizer() {
+          if (this.animFrame) cancelAnimationFrame(this.animFrame);
+          this.bars.forEach((b) => (b.style.height = "6px"));
+        }
+
+        stopAll() {
+          this.isSpeaking = false;
+          this.stopVisualizer();
+          if (this.currentAudio) {
+            try {
+              this.currentAudio.pause();
+              this.currentAudio.currentTime = 0;
+            } catch (e) {}
+            this.currentAudio = null;
+          }
+          if ("speechSynthesis" in window) {
+            try {
+              window.speechSynthesis.cancel();
+            } catch (e) {}
+          }
+        }
+
+        /* ۱. موتور استودیویی هوش مصنوعی Gemini 2.5 Flash TTS با پشتیبانی بی‌نظیر از فارسی */
+        async speakViaGeminiAI(cleanText) {
+          const apiKey = this.geminiApiKey;
+          if (!apiKey) throw new Error("کلید Gemini API هنوز وارد نشده است");
+
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+          const payload = {
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `این واژه یا جمله را با لحنی بسیار دلنشین، اصیل و کاملاً با لهجه شیرین فارسی تهران بخوان: ${cleanText}`
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: "Sulafat" }
+                }
+              }
+            },
+            model: "gemini-2.5-flash-preview-tts"
+          };
+
+          const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) throw new Error(`خطای سرور جمینای: ${response.status}`);
+          const result = await response.json();
+          const part = result?.candidates?.[0]?.content?.parts?.[0];
+          const audioData = part?.inlineData?.data;
+          const mimeType = part?.inlineData?.mimeType;
+
+          if (audioData && mimeType && mimeType.startsWith("audio/")) {
+            const matchRate = mimeType.match(/rate=(\d+)/);
+            const sampleRate = matchRate ? parseInt(matchRate[1], 10) : 24000;
+            const pcmBuffer = base64ToArrayBuffer(audioData);
+            const pcm16 = new Int16Array(pcmBuffer);
+            const wavBlob = pcmToWav(pcm16, sampleRate);
+            const audioUrl = URL.createObjectURL(wavBlob);
+
+            return new Promise((resolve) => {
+              const audio = new Audio(audioUrl);
+              this.currentAudio = audio;
+              audio.onplay = () => {
+                this.isSpeaking = true;
+                this.startVisualizer();
+              };
+              audio.onended = () => {
+                this.isSpeaking = false;
+                this.stopVisualizer();
+                resolve(true);
+              };
+              audio.onerror = () => {
+                this.isSpeaking = false;
+                this.stopVisualizer();
+                resolve(false);
+              };
+              audio.play();
+            });
+          } else {
+            throw new Error("پاسخ حاوی دیتای صوتی نبود");
+          }
+        }
+
+        /* ۲. موتور نیتیو سیستم با جستجوی صدای دل‌آرا و فرید در Microsoft Edge و زبان‌های فارسی و عربی */
+        async speakViaEdgeOrSystemNative(cleanText) {
+          if (!("speechSynthesis" in window)) throw new Error("WebSpeech موجود نیست");
+
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.resume();
+
+          const allVoices = this.voices.length > 0 ? this.voices : window.speechSynthesis.getVoices();
+
+          // اولویت اول: پیدا کردن مستقیم صدای دل‌آرا یا فرید (در مایکروسافت اج)
+          let selectedVoice = allVoices.find((v) =>
+            v.name.includes("Dilara") ||
+            v.name.includes("Farid") ||
+            v.name.includes("Persian") ||
+            v.lang.toLowerCase().startsWith("fa")
+          );
+
+          // اولویت دوم: صدای عربی (لهجه تلفظ حروف عربی ۹۰٪ شبیه فارسی است و هرگز مثل موتور انگلیسی «بهراد» را خراب نمی‌کند)
+          if (!selectedVoice) {
+            selectedVoice = allVoices.find((v) => v.lang.toLowerCase().startsWith("ar") || v.name.includes("Arabic"));
+          }
+
+          if (!selectedVoice) {
+            throw new Error("هیچ پکیج صوتی فارسی یا منطقه‌ای روی این مرورگر پیدا نشد");
+          }
+
+          return new Promise((resolve, reject) => {
+            const utter = new SpeechSynthesisUtterance(cleanText);
+            window._activeUtteranceAAC = utter;
+
+            utter.voice = selectedVoice;
+            utter.lang = selectedVoice.lang;
+            utter.rate = 0.92;
+            utter.pitch = 1.0;
+            utter.volume = 1.0;
+
+            utter.onstart = () => {
+              this.isSpeaking = true;
+              this.startVisualizer();
+            };
+
+            utter.onend = () => {
+              this.isSpeaking = false;
+              this.stopVisualizer();
+              window._activeUtteranceAAC = null;
+              resolve(true);
+            };
+
+            utter.onerror = (err) => {
+              this.isSpeaking = false;
+              this.stopVisualizer();
+              window._activeUtteranceAAC = null;
+              reject(err);
+            };
+
+            window.speechSynthesis.speak(utter);
+          });
+        }
+
+        /* ۳. موتور استریم مستقیم آنلاین فارسی گوگل با رفع مشکل ۴۰۳ رفرر و افزایش زمان انتظار وی‌پی‌ان */
+        async speakViaCloudStream(cleanText) {
+          const encoded = encodeURIComponent(cleanText);
+          const urls = [
+            `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=fa&client=tw-ob`,
+            `https://translate.google.co.uk/translate_tts?ie=UTF-8&q=${encoded}&tl=fa&client=tw-ob`
+          ];
+
+          for (const streamUrl of urls) {
+            try {
+              const ok = await new Promise((resolve, reject) => {
+                const audio = new Audio();
+                audio.referrerPolicy = "no-referrer";
+                audio.src = streamUrl;
+                this.currentAudio = audio;
+
+                // تایم‌اوت ۴ ثانیه‌ای برای وی‌پی‌ان‌های کند
+                const timeout = setTimeout(() => {
+                  audio.pause();
+                  reject(new Error("تایم‌اوت ارتباط"));
+                }, 4000);
+
+                audio.onplay = () => {
+                  this.isSpeaking = true;
+                  this.startVisualizer();
+                };
+
+                audio.onended = () => {
+                  clearTimeout(timeout);
+                  this.isSpeaking = false;
+                  this.stopVisualizer();
+                  this.currentAudio = null;
+                  resolve(true);
+                };
+
+                audio.onerror = (e) => {
+                  clearTimeout(timeout);
+                  this.isSpeaking = false;
+                  this.stopVisualizer();
+                  this.currentAudio = null;
+                  reject(e);
+                };
+
+                audio.play().catch(reject);
+              });
+              if (ok) return true;
+            } catch (err) {
+              console.warn("تلاش برای میرور بعدی صدا...", err);
+            }
+          }
+          throw new Error("استریم ابری با آی‌پی این وی‌پی‌ان پاسخ نداد");
+        }
+
+        /* ۴. پایپ‌لاین هوشمند زنجیره‌ای جهت پخش ۱۰۰٪ با لهجه و تلفظ اصیل فارسی */
+        async speak(text, chosenEngine = "auto") {
+          if (!text || text.trim().length === 0) return;
+          const cleanText = text.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+
+          this.stopAll();
+          await masterAudio.unlock();
+
+          const badge = document.getElementById("confidence-indicator");
+
+          // حالت ۱: انتخاب صریح هوش مصنوعی Gemini
+          if (chosenEngine === "gemini_ai") {
+            try {
+              badge.innerText = "🔊 در حال قرائت با هوش مصنوعی Gemini...";
+              badge.style.color = "var(--cyan-core)";
+              await this.speakViaGeminiAI(cleanText);
+              badge.innerText = `قرائت شد: «${cleanText}»`;
+              badge.style.color = "var(--emerald-core)";
+              return;
+            } catch (err) {
+              badge.innerText = "خطا در کلید Gemini؛ سوییچ به صدای دیگر...";
+              console.warn(err);
+            }
+          }
+
+          // حالت ۲: انتخاب صریح صدای مایکروسافت اج (دل‌آرا / فرید)
+          if (chosenEngine === "edge_native") {
+            try {
+              badge.innerText = "🔊 در حال قرائت با صدای طبیعی فارسی سیستم...";
+              badge.style.color = "var(--cyan-core)";
+              await this.speakViaEdgeOrSystemNative(cleanText);
+              badge.innerText = `قرائت شد: «${cleanText}»`;
+              badge.style.color = "var(--emerald-core)";
+              return;
+            } catch (err) {
+              badge.innerText = "صدای فارسی در این مرورگر نبود؛ سوییچ به استریم...";
+              console.warn(err);
+            }
+          }
+
+          // حالت ۳: انتخاب استریم ابری فارسی
+          if (chosenEngine === "cloud_stream") {
+            try {
+              badge.innerText = "🔊 در حال استریم فارسی...";
+              badge.style.color = "var(--cyan-core)";
+              await this.speakViaCloudStream(cleanText);
+              badge.innerText = `قرائت شد: «${cleanText}»`;
+              badge.style.color = "var(--emerald-core)";
+              return;
+            } catch (err) {
+              badge.innerText = "کندی وی‌پی‌ان؛ سوییچ به صدای نیتیو...";
+              console.warn(err);
+            }
+          }
+
+          // حالت پیش‌فرض هوشمند (Auto):
+          // اول: اگر کلید جمینای وارد شده بود، بهترین کیفیت جهان را پخش کن
+          if (this.geminiApiKey) {
+            try {
+              badge.innerText = "🔊 در حال قرائت با هوش مصنوعی Gemini...";
+              badge.style.color = "var(--cyan-core)";
+              await this.speakViaGeminiAI(cleanText);
+              badge.innerText = `قرائت شد: «${cleanText}»`;
+              badge.style.color = "var(--emerald-core)";
+              return;
+            } catch (e) {
+              console.warn("جمینای لود نشد، ادامه به موتور بعدی...", e);
+            }
+          }
+
+          // دوم: تلاش برای صدای نیتیو دل‌آرا/فرید (در صورت باز بودن در Edge فوق‌العاده است)
+          try {
+            badge.innerText = "🔊 در حال قرائت با صدای فارسی بومی سیستم...";
+            badge.style.color = "var(--cyan-core)";
+            await this.speakViaEdgeOrSystemNative(cleanText);
+            badge.innerText = `قرائت شد: «${cleanText}»`;
+            badge.style.color = "var(--emerald-core)";
+            return;
+          } catch (e) {
+            console.warn("صدای بومی در دسترس نبود، تلاش برای استریم...", e);
+          }
+
+          // سوم: تلاش برای استریم ابری فارسی بدون باگ ۴۰۳
+          try {
+            badge.innerText = "🔊 در حال استریم آنلاین فارسی...";
+            badge.style.color = "var(--cyan-core)";
+            await this.speakViaCloudStream(cleanText);
+            badge.innerText = `قرائت شد: «${cleanText}»`;
+            badge.style.color = "var(--emerald-core)";
+            return;
+          } catch (e) {
+            console.warn("استریم ابری لود نشد...", e);
+          }
+
+          // در صورت بروز هر مشکلی، به جای ادای مضحک با لهجه انگلیسی، چایم زیبایی نواخته و راهنمایی نشان می‌دهد
+          badge.innerText = "💡 برای صدای فوق‌العاده فارسی، صفحه را در Edge باز کنید یا کلید Gemini بگذارید";
+          badge.style.color = "var(--amber-core)";
+          masterAudio.playChime();
+        }
+      }
+
+      const universalSpeech = new UniversalSpeechAAC();
+
+      class VectorSmoother {
+        constructor(smoothing = 0.75) {
+          this.smoothing = smoothing;
+          this.current = null;
+        }
+
+        update(target) {
+          if (!this.current) {
+            this.current = target.clone();
+            return this.current.clone();
+          }
+          this.current.lerp(target, 1 - this.smoothing);
+          return this.current.clone();
+        }
+
+        reset() {
+          this.current = null;
+        }
+      }
+
+      async function recognizeViaCloudHandwriting(strokes) {
+        if (!strokes || strokes.length === 0) return null;
+
+        const ink = strokes.map((str) => {
+          const xs = str.map((p) => Math.round(p.x));
+          const ys = str.map((p) => Math.round(p.y));
+          const ts = str.map((p) => Math.round(p.t));
+          return [xs, ys, ts];
+        });
+
+        const payload = {
+          options: "enable_pre_space",
+          requests: [
+            {
+              writing_guide: {
+                writing_area_width: window.innerWidth,
+                writing_area_height: window.innerHeight
+              },
+              ink: ink,
+              language: "fa"
+            }
+          ]
+        };
+
+        try {
+          const response = await fetch(
+            "https://inputtools.google.com/request?ime=handwriting&app=autopen&cs=1&oe=UTF-8",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            }
+          );
+
+          if (!response.ok) throw new Error("پاسخ ناموفق IME");
+
+          const data = await response.json();
+          if (data[0] === "SUCCESS" && data[1] && data[1][0] && data[1][0][1]) {
+            const candidates = data[1][0][1];
+            const boosterVocab = ["بهراد", "مهراد", "سلام", "خوبی", "کمک", "متشکرم", "بله", "خیر", "دانشگاه"];
+            const bestMatch = candidates.find((c) => boosterVocab.includes(c)) || candidates[0];
+            return {
+              bestWord: bestMatch,
+              allCandidates: candidates.slice(0, 5)
+            };
+          }
+        } catch (err) {
+          console.warn("خطا در بازشناسی دست‌خط:", err);
+        }
+        return null;
+      }
+
+      class SpatialCanvas3D {
+        constructor() {
+          this.canvas = document.getElementById("webgl-canvas");
+          this.scene = new THREE.Scene();
+          this.scene.background = new THREE.Color(0x030712);
+
+          this.camera = new THREE.PerspectiveCamera(
+            55,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            300
+          );
+          this.camera.position.set(0, 0, 36);
+
+          this.renderer = new THREE.WebGLRenderer({
+            canvas: this.canvas,
+            antialias: true,
+            alpha: false
+          });
+          this.renderer.setSize(window.innerWidth, window.innerHeight);
+          this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+          const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+          dirLight.position.set(10, 20, 20);
+          this.scene.add(dirLight);
+
+          const ambLight = new THREE.AmbientLight(0x223344, 1.0);
+          this.scene.add(ambLight);
+
+          this.stylusRight = this.createStylusMesh(0x00f0ff);
+          this.scene.add(this.stylusRight);
+
+          this.stylusLeft = this.createStylusMesh(0xd946ef);
+          this.scene.add(this.stylusLeft);
+
+          this.linesGroup = new THREE.Group();
+          this.scene.add(this.linesGroup);
+
+          const grid = new THREE.GridHelper(100, 50, 0x0e2238, 0x050c18);
+          grid.position.y = -16;
+          this.scene.add(grid);
+
+          window.addEventListener("resize", () => this.resize());
+        }
+
+        createStylusMesh(colorHex) {
+          const group = new THREE.Group();
+          const sphereGeo = new THREE.SphereGeometry(0.3, 24, 24);
+          const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+          const sphere = new THREE.Mesh(sphereGeo, mat);
+          group.add(sphere);
+
+          const ringGeo = new THREE.RingGeometry(0.4, 0.55, 32);
+          const ringMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+          const ring = new THREE.Mesh(ringGeo, ringMat);
+          group.add(ring);
+
+          const light = new THREE.PointLight(colorHex, 1.5, 12);
+          group.add(light);
+
+          group.visible = false;
+          return group;
+        }
+
+        resize() {
+          this.camera.aspect = window.innerWidth / window.innerHeight;
+          this.camera.updateProjectionMatrix();
+          this.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        render() {
+          this.renderer.render(this.scene, this.camera);
+        }
+
+        clearAll() {
+          while (this.linesGroup.children.length > 0) {
+            const obj = this.linesGroup.children[0];
+            if (obj.geometry) obj.geometry.dispose();
+            if (obj.material) obj.material.dispose();
+            this.linesGroup.remove(obj);
+          }
+        }
+      }
+
+      class UltraSmoothRadarHUD {
+        constructor(canvas) {
+          this.canvas = canvas;
+          this.ctx = canvas.getContext("2d");
+          this.scanAngle = 0;
+
+          this.smoothBox = {
+            minX: 0,
+            maxX: 100,
+            minY: 0,
+            maxY: 100,
+            initialized: false
+          };
+        }
+
+        resize() {
+          const rect = this.canvas.parentElement.getBoundingClientRect();
+          const dpr = window.devicePixelRatio || 1;
+          this.canvas.width = rect.width * dpr;
+          this.canvas.height = rect.height * dpr;
+        }
+
+        smoothPoints(pts) {
+          if (!pts || pts.length < 3) return pts;
+          const res = [{ x: pts[0].x, y: pts[0].y }];
+          for (let i = 1; i < pts.length - 1; i++) {
+            const p0 = pts[i - 1];
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+            res.push({
+              x: 0.22 * p0.x + 0.56 * p1.x + 0.22 * p2.x,
+              y: 0.22 * p0.y + 0.56 * p1.y + 0.22 * p2.y
+            });
+          }
+          res.push({ x: pts[pts.length - 1].x, y: pts[pts.length - 1].y });
+          return res;
+        }
+
+        draw(strokes, activeTip = null) {
+          const w = this.canvas.width;
+          const h = this.canvas.height;
+          const ctx = this.ctx;
+
+          ctx.clearRect(0, 0, w, h);
+          this.scanAngle += 0.035;
+
+          const cx = w / 2;
+          const cy = h / 2;
+
+          // ۱. خطوط راهنما و دایره‌های راداری
+          ctx.save();
+          ctx.strokeStyle = "rgba(0, 240, 255, 0.08)";
+          ctx.lineWidth = 1;
+
+          [0.25, 0.5, 0.75, 0.95].forEach((factor) => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, Math.min(cx, cy) * factor, 0, Math.PI * 2);
+            ctx.stroke();
+          });
+
+          ctx.beginPath();
+          ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+          ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+          ctx.stroke();
+
+          // پرتو نوری گردان رادار
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(this.scanAngle);
+          const sweepGrad = ctx.createLinearGradient(0, 0, Math.max(w, h), 0);
+          sweepGrad.addColorStop(0, "rgba(0, 240, 255, 0.25)");
+          sweepGrad.addColorStop(1, "rgba(0, 240, 255, 0)");
+          ctx.strokeStyle = sweepGrad;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.max(w, h), 0);
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.restore();
+
+          // ۲. محاسبه آرام و نرم کادر محصورکننده (Smooth Box Lerp) بدون هیچ پرش
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          let hasPoints = false;
+
+          strokes.forEach((stroke) => {
+            stroke.forEach((p) => {
+              hasPoints = true;
+              if (p.x < minX) minX = p.x;
+              if (p.x > maxX) maxX = p.x;
+              if (p.y < minY) minY = p.y;
+              if (p.y > maxY) maxY = p.y;
+            });
+          });
+
+          if (!hasPoints) {
+            this.smoothBox.initialized = false;
+            return;
+          }
+
+          if (!this.smoothBox.initialized) {
+            this.smoothBox.minX = minX;
+            this.smoothBox.maxX = maxX;
+            this.smoothBox.minY = minY;
+            this.smoothBox.maxY = maxY;
+            this.smoothBox.initialized = true;
+          } else {
+            this.smoothBox.minX += (minX - this.smoothBox.minX) * 0.12;
+            this.smoothBox.maxX += (maxX - this.smoothBox.maxX) * 0.12;
+            this.smoothBox.minY += (minY - this.smoothBox.minY) * 0.12;
+            this.smoothBox.maxY += (maxY - this.smoothBox.maxY) * 0.12;
+          }
+
+          const boxW = Math.max(30, this.smoothBox.maxX - this.smoothBox.minX);
+          const boxH = Math.max(30, this.smoothBox.maxY - this.smoothBox.minY);
+          const pad = 24;
+          const scale = Math.min((w - pad * 2) / boxW, (h - pad * 2) / boxH);
+          const offsetX = (w - boxW * scale) / 2;
+          const offsetY = (h - boxH * scale) / 2;
+
+          const toScreen = (p) => ({
+            x: offsetX + (p.x - this.smoothBox.minX) * scale,
+            y: offsetY + (p.y - this.smoothBox.minY) * scale
+          });
+
+          ctx.save();
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+
+          const smoothedStrokes = strokes.map((s) => this.smoothPoints(s.map(toScreen)));
+
+          // لایه اول: هاله نئونی عریض
+          ctx.strokeStyle = "rgba(0, 240, 255, 0.28)";
+          ctx.lineWidth = 6.5;
+          smoothedStrokes.forEach((stroke) => {
+            if (stroke.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(stroke[0].x, stroke[0].y);
+            for (let i = 1; i < stroke.length - 1; i++) {
+              const mx = (stroke[i].x + stroke[i + 1].x) / 2;
+              const my = (stroke[i].y + stroke[i + 1].y) / 2;
+              ctx.quadraticCurveTo(stroke[i].x, stroke[i].y, mx, my);
+            }
+            ctx.lineTo(stroke[stroke.length - 1].x, stroke[stroke.length - 1].y);
+            ctx.stroke();
+          });
+
+          // لایه دوم: خط هسته درخشان و دقیق
+          ctx.strokeStyle = "#00f0ff";
+          ctx.lineWidth = 2.8;
+          ctx.shadowColor = "#00f0ff";
+          ctx.shadowBlur = 10;
+
+          smoothedStrokes.forEach((stroke) => {
+            if (stroke.length === 0) return;
+            if (stroke.length <= 2) {
+              ctx.fillStyle = "#00f0ff";
+              ctx.beginPath();
+              ctx.arc(stroke[0].x, stroke[0].y, 3.8, 0, Math.PI * 2);
+              ctx.fill();
+              return;
+            }
+            ctx.beginPath();
+            ctx.moveTo(stroke[0].x, stroke[0].y);
+            for (let i = 1; i < stroke.length - 1; i++) {
+              const mx = (stroke[i].x + stroke[i + 1].x) / 2;
+              const my = (stroke[i].y + stroke[i + 1].y) / 2;
+              ctx.quadraticCurveTo(stroke[i].x, stroke[i].y, mx, my);
+            }
+            ctx.lineTo(stroke[stroke.length - 1].x, stroke[stroke.length - 1].y);
+            ctx.stroke();
+          });
+
+          // لایه سوم: موقعیت بلادرنگ نوک قلم
+          if (activeTip) {
+            const tipPos = toScreen(activeTip);
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(tipPos.x, tipPos.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = "#10b981";
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(tipPos.x, tipPos.y, 8, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          ctx.restore();
+        }
+      }
+
+      class AetherScribeApplication {
+        constructor() {
+          this.spatial = new SpatialCanvas3D();
+          this.videoEl = document.getElementById("webcam-source");
+          this.radarHUD = new UltraSmoothRadarHUD(document.getElementById("radar-pad-canvas"));
+
+          this.smootherRight = new VectorSmoother(0.75);
+          this.smootherLeft = new VectorSmoother(0.75);
+
+          this.handStates = {
+            right: { isWriting: false, currentMesh: null, currentPts: [], pinchVal: 0 },
+            left: { isWriting: false, currentMesh: null, currentPts: [], pinchVal: 0 }
+          };
+
+          this.wordStrokes = [];
+          this.lastRecognizedWord = "";
+          this.isRecognizing = false;
+          this.lastGestureTrigger = 0;
+          this.lastClearGestureTime = 0;
+
+          this.mirror = true;
+          this.autoSpeak = true;
+          this.ttsEngine = "auto";
+          this.selectedDeviceId = null;
+
+          this.fpsCounter = 0;
+          this.lastFpsTimestamp = performance.now();
+
+          this.initUI();
+          this.initMediaPipe();
+        }
+
+        initUI() {
+          const toggleBtn = document.getElementById("toggle-settings-btn");
+          const drawer = document.getElementById("settings-drawer");
+          const closeDrawer = document.getElementById("close-drawer-btn");
+          const fullscreenBtn = document.getElementById("fullscreen-btn");
+          const quickTts = document.getElementById("quick-tts-select");
+          const geminiInput = document.getElementById("gemini-key-input");
+
+          this.ttsEngine = quickTts.value;
+
+          quickTts.addEventListener("change", (e) => {
+            this.ttsEngine = e.target.value;
+            this.showToast(`موتور گفتار: ${e.target.options[e.target.selectedIndex].text}`);
+          });
+
+          geminiInput.addEventListener("input", (e) => {
+            universalSpeech.setGeminiKey(e.target.value);
+            if (e.target.value.length > 10) {
+              this.showToast("کلید Gemini ذخیره شد ✨");
+            }
+          });
+
+          toggleBtn.addEventListener("click", () => {
+            masterAudio.unlock();
+            drawer.style.display = drawer.style.display === "flex" ? "none" : "flex";
+          });
+
+          closeDrawer.addEventListener("click", () => {
+            drawer.style.display = "none";
+          });
+
+          fullscreenBtn.addEventListener("click", () => {
+            if (!document.fullscreenElement) {
+              document.documentElement.requestFullscreen();
+            } else {
+              document.exitFullscreen();
+            }
+          });
+
+          const audioTesterBtn = document.getElementById("audio-tester-btn");
+          audioTesterBtn.addEventListener("click", async () => {
+            await masterAudio.unlock();
+            await masterAudio.playChime();
+            this.showToast("تست صدا: در حال قرائت اصیل کلمه «بهراد»...");
+            setTimeout(() => {
+              universalSpeech.speak("بهراد", this.ttsEngine);
+            }, 300);
+          });
+
+          document.getElementById("trigger-recognize-btn").addEventListener("click", () => {
+            masterAudio.unlock();
+            this.recognizeAndSpeakWord();
+          });
+
+          document.getElementById("clear-space-btn").addEventListener("click", () => {
+            this.clearWordCollection(true);
+          });
+
+          document.getElementById("replay-voice-btn").addEventListener("click", async () => {
+            await masterAudio.unlock();
+            const txt = this.lastRecognizedWord;
+            if (txt && txt.trim().length > 0) {
+              this.showToast(`پخش مجدد: "${txt}"`);
+              const container = document.getElementById("speech-hero-container");
+              container.style.borderColor = "var(--emerald-core)";
+              setTimeout(() => (container.style.borderColor = "rgba(0, 240, 255, 0.4)"), 400);
+              universalSpeech.speak(txt, this.ttsEngine);
+            } else {
+              this.showToast("هنوز کلمه‌ای نوشته نشده است!");
+            }
+          });
+
+          document.getElementById("copy-text-btn").addEventListener("click", () => {
+            const txt = this.lastRecognizedWord;
+            if (txt && txt.trim().length > 0) {
+              const tempInput = document.createElement("textarea");
+              tempInput.value = txt;
+              document.body.appendChild(tempInput);
+              tempInput.select();
+              document.execCommand("copy");
+              document.body.removeChild(tempInput);
+              this.showToast("کپی شد: " + txt);
+            }
+          });
+
+          document.querySelectorAll(".phrase-chip").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              masterAudio.unlock();
+              const phrase = btn.getAttribute("data-phrase");
+              this.applyRecognizedPhrase(phrase);
+            });
+          });
+
+          document.getElementById("smooth-range").addEventListener("input", (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById("smooth-label").innerText = val.toFixed(2);
+            this.smootherRight.smoothing = val;
+            this.smootherLeft.smoothing = val;
+          });
+
+          document.getElementById("mirror-checkbox").addEventListener("change", (e) => {
+            this.mirror = e.target.checked;
+            this.videoEl.className = this.mirror ? "mirrored" : "";
+          });
+
+          document.getElementById("autospeak-checkbox").addEventListener("change", (e) => {
+            this.autoSpeak = e.target.checked;
+          });
+
+          document.getElementById("resolution-selector").addEventListener("change", (e) => {
+            this.bootCamera(this.selectedDeviceId, e.target.value);
+          });
+
+          window.addEventListener("resize", () => this.radarHUD.resize());
+        }
+
+        showToast(msg) {
+          const t = document.getElementById("toast-message");
+          t.innerText = msg;
+          t.classList.add("show");
+          setTimeout(() => t.classList.remove("show"), 2400);
+        }
+
+        clearWordCollection(playSound = true) {
+          if (playSound) masterAudio.playEraserSwoosh();
+          this.spatial.clearAll();
+          this.wordStrokes = [];
+          this.handStates.right.currentPts = [];
+          this.handStates.left.currentPts = [];
+          this.radarHUD.draw([]);
+          document.getElementById("stroke-count-label").innerText = `۰ خط`;
+          document.getElementById("radar-counter-text").innerText = `۰ خط`;
+          document.getElementById("confidence-indicator").innerText = "آماده نگارش";
+          this.showToast("تخته پاک شد 🗑️");
+        }
+
+        async populateCameras() {
+          const select = document.getElementById("camera-selector");
+          select.innerHTML = "";
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevs = devices.filter((d) => d.kind === "videoinput");
+            videoDevs.forEach((dev, idx) => {
+              const opt = document.createElement("option");
+              opt.value = dev.deviceId;
+              opt.text = dev.label || `دوربین ${idx + 1}`;
+              select.appendChild(opt);
+            });
+            if (videoDevs.length > 0) {
+              this.selectedDeviceId = videoDevs[0].deviceId;
+            }
+          } catch (e) {
+            console.warn(e);
+          }
+
+          select.addEventListener("change", (e) => {
+            this.selectedDeviceId = e.target.value;
+            this.bootCamera(this.selectedDeviceId);
+          });
+        }
+
+        async bootCamera(deviceId, resStr = "1280x720") {
+          if (this.videoStream) {
+            this.videoStream.getTracks().forEach((t) => t.stop());
+          }
+
+          const [w, h] = resStr.split("x").map(Number);
+          const constraints = {
+            video: {
+              width: { ideal: w },
+              height: { ideal: h },
+              ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" })
+            },
+            audio: false
+          };
+
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          this.videoStream = stream;
+          this.videoEl.srcObject = stream;
+
+          await new Promise((res) => {
+            this.videoEl.onloadedmetadata = () => {
+              this.videoEl.play();
+              res();
+            };
+          });
+
+          this.radarHUD.resize();
+        }
+
+        async initMediaPipe() {
+          try {
+            const vision = await FilesetResolver.forVisionTasks(
+              "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
+            );
+
+            this.landmarker = await HandLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                delegate: "GPU"
+              },
+              runningMode: "VIDEO",
+              numHands: 2,
+              minHandDetectionConfidence: 0.65,
+              minHandPresenceConfidence: 0.65,
+              minTrackingConfidence: 0.65
+            });
+
+            await this.populateCameras();
+            await this.bootCamera(this.selectedDeviceId);
+
+            const curtain = document.getElementById("system-curtain");
+            curtain.style.opacity = "0";
+            setTimeout(() => (curtain.style.display = "none"), 500);
+
+            this.runLoop();
+          } catch (err) {
+            console.error(err);
+            this.showToast("خطا در راه‌اندازی دوربین");
+          }
+        }
+
+        beginHandStroke(handKey, pos3D, screenPoint) {
+          masterAudio.playClick();
+          const state = this.handStates[handKey];
+          const colorHex = handKey === "right" ? 0x00f0ff : 0xd946ef;
+
+          const maxPoints = 2500;
+          const geo = new THREE.BufferGeometry();
+          const positions = new Float32Array(maxPoints * 3);
+          positions[0] = pos3D.x;
+          positions[1] = pos3D.y;
+          positions[2] = pos3D.z;
+
+          geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+          geo.setDrawRange(0, 1);
+
+          const mat = new THREE.LineBasicMaterial({
+            color: colorHex,
+            linewidth: 4,
+            linecap: "round",
+            linejoin: "round"
+          });
+
+          const lineMesh = new THREE.Line(geo, mat);
+          lineMesh.userData = { count: 1, max: maxPoints, data: positions };
+          this.spatial.linesGroup.add(lineMesh);
+
+          state.currentMesh = lineMesh;
+          state.currentPts = [{ x: screenPoint.x, y: screenPoint.y, t: performance.now() }];
+        }
+
+        continueHandStroke(handKey, pos3D, screenPoint) {
+          const state = this.handStates[handKey];
+          if (!state.currentMesh) return;
+
+          const ud = state.currentMesh.userData;
+          if (ud.count >= ud.max) return;
+
+          const lastIdx = (ud.count - 1) * 3;
+          const lx = ud.data[lastIdx];
+          const ly = ud.data[lastIdx + 1];
+          const lz = ud.data[lastIdx + 2];
+
+          const dist = Math.hypot(pos3D.x - lx, pos3D.y - ly, pos3D.z - lz);
+          if (dist > 0.05) {
+            const nextIdx = ud.count * 3;
+            ud.data[nextIdx] = pos3D.x;
+            ud.data[nextIdx + 1] = pos3D.y;
+            ud.data[nextIdx + 2] = pos3D.z;
+
+            ud.count++;
+            state.currentMesh.geometry.setDrawRange(0, ud.count);
+            state.currentMesh.geometry.attributes.position.needsUpdate = true;
+
+            state.currentPts.push({ x: screenPoint.x, y: screenPoint.y, t: performance.now() });
+          }
+        }
+
+        endHandStroke(handKey) {
+          const state = this.handStates[handKey];
+          if (state.currentPts.length >= 1) {
+            this.wordStrokes.push([...state.currentPts]);
+            document.getElementById("stroke-count-label").innerText = `${this.wordStrokes.length} خط`;
+            document.getElementById("radar-counter-text").innerText = `${this.wordStrokes.length} خط`;
+          }
+          state.currentMesh = null;
+          state.currentPts = [];
+        }
+
+        applyRecognizedPhrase(text, candidateList = []) {
+          masterAudio.playChime();
+          this.lastRecognizedWord = text;
+          const targetEl = document.getElementById("target-speech-text");
+          const badge = document.getElementById("confidence-indicator");
+
+          targetEl.innerHTML = `<span style="color: #00f0ff;">${text}</span>`;
+          badge.innerText = `شناسایی شد: «${text}»`;
+          badge.style.color = "var(--emerald-core)";
+
+          const candContainer = document.getElementById("candidates-container");
+          candContainer.innerHTML = '<span class="candidate-badge-tag">کاندیداها:</span>';
+          const setCands = new Set([text, ...candidateList]);
+          setCands.forEach((cand) => {
+            const btn = document.createElement("button");
+            btn.className = "candidate-chip";
+            btn.innerText = cand;
+            btn.onclick = () => {
+              this.applyRecognizedPhrase(cand);
+            };
+            candContainer.appendChild(btn);
+          });
+
+          this.showToast(`تبدیل شد: "${text}"`);
+
+          if (this.autoSpeak) {
+            universalSpeech.speak(text, this.ttsEngine);
+          }
+        }
+
+        async recognizeAndSpeakWord() {
+          if (this.isRecognizing) return;
+
+          if (this.handStates.right.currentPts.length > 0) this.endHandStroke("right");
+          if (this.handStates.left.currentPts.length > 0) this.endHandStroke("left");
+
+          if (this.wordStrokes.length === 0) return;
+
+          this.isRecognizing = true;
+          const badge = document.getElementById("confidence-indicator");
+          badge.innerText = `⏳ در حال بازشناسی دست‌خط...`;
+          badge.style.color = "var(--cyan-core)";
+
+          const result = await recognizeViaCloudHandwriting(this.wordStrokes);
+          this.isRecognizing = false;
+
+          if (result && result.bestWord && result.bestWord.trim().length > 0) {
+            this.applyRecognizedPhrase(result.bestWord, result.allCandidates || []);
+          } else {
+            badge.innerText = "عدم تشخیص، دوباره بنویسید";
+            badge.style.color = "var(--amber-core)";
+          }
+        }
+
+        runLoop() {
+          const now = performance.now();
+
+          this.fpsCounter++;
+          if (now - this.lastFpsTimestamp >= 1000) {
+            document.getElementById("fps-label").innerText = `${this.fpsCounter} FPS`;
+            this.fpsCounter = 0;
+            this.lastFpsTimestamp = now;
+          }
+
+          let activeScreenTip = null;
+
+          if (this.videoEl.readyState >= 2 && this.landmarker) {
+            const results = this.landmarker.detectForVideo(this.videoEl, now);
+            let rightLM = null;
+            let leftLM = null;
+
+            if (results.landmarks && results.handedness) {
+              results.handedness.forEach((handObj, i) => {
+                const cat = handObj[0].categoryName;
+                const lm = results.landmarks[i];
+                if (this.mirror) {
+                  if (cat === "Left") rightLM = lm;
+                  else leftLM = lm;
+                } else {
+                  if (cat === "Right") rightLM = lm;
+                  else leftLM = lm;
+                }
+              });
+            }
+
+            const pRight = this.processSingleHand("right", rightLM, this.smootherRight, this.spatial.stylusRight, "right-pinch-ring", "right-hand-label");
+            const pLeft = this.processSingleHand("left", leftLM, this.smootherLeft, this.spatial.stylusLeft, "left-pinch-ring", "left-hand-label");
+
+            activeScreenTip = pRight || pLeft;
+          }
+
+          const currentRadarStrokes = [...this.wordStrokes];
+          if (this.handStates.right.currentPts.length > 0) currentRadarStrokes.push(this.handStates.right.currentPts);
+          if (this.handStates.left.currentPts.length > 0) currentRadarStrokes.push(this.handStates.left.currentPts);
+
+          this.radarHUD.draw(currentRadarStrokes, activeScreenTip);
+          this.spatial.render();
+
+          requestAnimationFrame(() => this.runLoop());
+        }
+
+        processSingleHand(handKey, landmarks, smoother, stylusMesh, ringId, labelId) {
+          const now = performance.now();
+          const state = this.handStates[handKey];
+          const ring = document.getElementById(ringId);
+          const label = document.getElementById(labelId);
+
+          if (!landmarks) {
+            stylusMesh.visible = false;
+            if (state.isWriting) {
+              state.isWriting = false;
+              this.endHandStroke(handKey);
+            }
+            smoother.reset();
+            ring.style.strokeDashoffset = "44";
+            label.innerText = `${handKey === "right" ? "راست" : "چپ"}: خارج از کادر`;
+            return null;
+          }
+
+          const indexTip = landmarks[8];
+          const thumbTip = landmarks[4];
+          const wrist = landmarks[0];
+          const palmSize = Math.hypot(landmarks[9].x - wrist.x, landmarks[9].y - wrist.y) || 0.1;
+
+          const sX = 54, sY = 40, sZ = 35;
+          const posX = (0.5 - indexTip.x) * (this.mirror ? sX : -sX);
+          const posY = (0.5 - indexTip.y) * sY;
+          const posZ = -indexTip.z * sZ;
+
+          const smoothPos = smoother.update(new THREE.Vector3(posX, posY, posZ));
+          stylusMesh.visible = true;
+          stylusMesh.position.copy(smoothPos);
+
+          const screenPoint = {
+            x: (this.mirror ? 1 - indexTip.x : indexTip.x) * window.innerWidth,
+            y: indexTip.y * window.innerHeight
+          };
+
+          const pinchDist = Math.hypot(
+            indexTip.x - thumbTip.x,
+            indexTip.y - thumbTip.y,
+            indexTip.z - thumbTip.z
+          );
+          const normalizedPinch = pinchDist / palmSize;
+          const isPinching = normalizedPinch < 0.38;
+
+          const meterPercent = Math.max(0, Math.min(1, 1 - normalizedPinch / 0.5));
+          ring.style.strokeDashoffset = `${44 - meterPercent * 44}`;
+
+          const isIndexUp = landmarks[8].y < landmarks[6].y;
+          const isMiddleUp = landmarks[12].y < landmarks[10].y;
+          const isRingDown = landmarks[16].y > landmarks[14].y;
+          const isPinkyDown = landmarks[20].y > landmarks[18].y;
+          const isPeaceSign = isIndexUp && isMiddleUp && isRingDown && isPinkyDown;
+
+          if (isPeaceSign && now - this.lastGestureTrigger > 2200) {
+            this.lastGestureTrigger = now;
+            masterAudio.unlock();
+            this.recognizeAndSpeakWord();
+          }
+
+          const fistDistance =
+            Math.hypot(landmarks[8].x - wrist.x, landmarks[8].y - wrist.y) +
+            Math.hypot(landmarks[12].x - wrist.x, landmarks[12].y - wrist.y) +
+            Math.hypot(landmarks[16].x - wrist.x, landmarks[16].y - wrist.y) +
+            Math.hypot(landmarks[20].x - wrist.x, landmarks[20].y - wrist.y);
+
+          const isFist = fistDistance / palmSize < 2.3;
+          if (isFist && now - this.lastClearGestureTime > 2500) {
+            this.lastClearGestureTime = now;
+            this.clearWordCollection(true);
+          }
+
+          if (isPinching) {
+            label.innerText = `${handKey === "right" ? "راست" : "چپ"}: در حال نگارش`;
+            if (!state.isWriting) {
+              state.isWriting = true;
+              this.beginHandStroke(handKey, smoothPos, screenPoint);
+            } else {
+              this.continueHandStroke(handKey, smoothPos, screenPoint);
+            }
+            return screenPoint;
+          } else {
+            label.innerText = `${handKey === "right" ? "راست" : "چپ"}: آماده`;
+            if (state.isWriting) {
+              state.isWriting = false;
+              this.endHandStroke(handKey);
+            }
+            return null;
+          }
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        const app = new AetherScribeApplication();
+        window.aetherApp = app;
+
+        const unlockAudio = () => {
+          masterAudio.unlock();
+          window.removeEventListener("pointerdown", unlockAudio);
+          window.removeEventListener("keydown", unlockAudio);
+          window.removeEventListener("touchstart", unlockAudio);
+        };
+        window.addEventListener("pointerdown", unlockAudio);
+        window.addEventListener("keydown", unlockAudio);
+        window.addEventListener("touchstart", unlockAudio);
+      });
+    </script>
+  </body>
+</html>
